@@ -5,8 +5,65 @@ import numpy as np
 mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 
-# data processing
 
+# dataset
+class Dataset(mx.gluon.data.Dataset):
+    def __init__(self, filename):
+        super(Dataset, self).__init__()
+        import os
+
+        windows_dataset_root = r'D:\Documents\Data_Files\Pascal'
+        windows_dataset_root2 = r'h:\hlc\Datasets\Pascal'
+        linux_dataset_root = '../Dataset/Pascal'
+        dataset_root = windows_dataset_root
+        img_idx_directory = os.path.sep.join([dataset_root, 'VOC2007', 'VOCtrainval_06-Nov-2007', 'VOCdevkit',
+                                              'VOC2007', 'ImageSets', 'Main'])
+        self.img_directory = os.path.sep.join([dataset_root, 'VOC2007', 'VOCtrainval_06-Nov-2007', 'VOCdevkit',
+                                               'VOC2007', 'JPEGImages'])
+        self.annotation_directory = os.path.sep.join([dataset_root, 'VOC2007', 'VOCtrainval_06-Nov-2007', 'VOCdevkit',
+                                                      'VOC2007', 'Annotations'])
+        self.class_name = filename.split('_')[0]
+
+        self.img_indices = []
+        with open(os.path.sep.join([img_idx_directory, filename]), 'r') as f:
+            import re
+            regex = re.compile('[ ]+')
+            while True:
+                line = f.readline()
+                if line == '':
+                    break
+                img_idx, in_the_class = regex.split(line.rstrip('\n'))
+                in_the_class = int(in_the_class)
+                if in_the_class == 1:
+                    self.img_indices.append(img_idx)
+        self.len = len(self.img_indices)
+        return
+
+    def __getitem__(self, idx):
+        import os
+        import mxnet as mx
+        import xml.etree.ElementTree as et
+
+        img_path = os.path.sep.join([self.img_directory, str(self.img_indices[idx]) + '.jpg'])
+        img = mx.image.imread(img_path)
+
+        label_path = os.path.sep.join([self.annotation_directory, str(self.img_indices[idx]) + '.xml'])
+        tree = et.parse(label_path)
+        root = tree.getroot()
+        obj_iter = root.iterfind('object')
+        for obj in obj_iter:
+            if obj.find('name').text == self.class_name:
+                bndbox = obj.find('bndbox')
+                coors = mx.nd.array([int(coor.text) for coor in bndbox])
+                label = mx.nd.concat(mx.nd.array([1]), coors, dim=0)
+                label = label.reshape(shape=(1, 5))
+        return img.asnumpy(), label.astype('int').asnumpy()
+
+    def __len__(self):
+        return self.len
+
+
+# data processing
 def resize_img_and_label (img, label, size=300):
     """
     :function: resize the img and label to (300, 300), and transform the dtype from int8 to float32
@@ -76,8 +133,8 @@ def prepare_datum_for_net(img, label):
 
     return mx_img, mx_label
 
-# data visualization
 
+# data visualization
 def _add_rectangle(axes, relative_bbox, color='red'):
     """
     :param axes:
